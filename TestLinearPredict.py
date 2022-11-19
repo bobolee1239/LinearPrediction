@@ -11,7 +11,7 @@ def genExcitation(size, period):
     excitation = np.zeros((size, ))
     cnt = 0
     while cnt < size:
-        excitation[cnt] = 0.01
+        excitation[cnt] = 0.028
         cnt += period
     return excitation
 

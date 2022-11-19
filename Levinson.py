@@ -123,7 +123,7 @@ if __name__ == '__main__':
         order = 4
         lpc = Levinson(order)
 
-        win_size = 64
+        win_size = 32
         hop_size = win_size // 2
         win = signal.windows.hann(win_size+1)[:-1]
         buf = np.zeros((win_size, ))
