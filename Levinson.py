@@ -35,27 +35,35 @@ class Levinson(ILinearPredictor):
         self._updateCov(istream)
         return self._updateCoef()
 
-    def pem(self, istream):
+    def pem(self, istream, prevStream=None):
         '''
+        Predict Error Method
+        -----------------------
         Arg:
-            - stream <np.ndarray> in reverse order, e.g. [xp, xp-1, ... x2, x1]
+            - istream <np.ndarray> : current stream
         Return:
-            - error : <np.ndarray>
+            - error   <np.ndarray> : predicted error stream
+            - buf     <np.ndarray> : buffer for next prediction
         '''
         N = istream.shape[0]
-        buf = np.zeros((self._order, ))
+        buf = prevStream if (prevStream is not None) else np.zeros((self._order, )) 
         estream = np.zeros(istream.shape)
-        for n in range(self._order):
-            buf = np.roll(buf, 1)
-            buf[0] = istream[n]
-        for n in range(self._order, N):
+        for n in range(N):
             pred = self.predictNext(buf)
             estream[n] = (istream[n] - pred)
             buf = np.roll(buf, 1)
             buf[0] = istream[n]
-        return estream
+        return estream, np.copy(buf)
 
     def predictNext(self, frm):
+        '''
+        Predict next sample based on previous observation (auto-regression)
+        -----------------------
+        Arg:
+            - frm     : <np.ndarray> in reverse order (from new to old), e.g. [xp, xp-1, ... x2, x1]
+        Return:
+            - predict : <float>
+        '''
         return -(self._coef * frm).sum()
     
     def getCoef(self):
@@ -111,8 +119,6 @@ if __name__ == '__main__':
         print('Test Stream Update LPC!')
         num_smpl = 128
         istream = genTestSignal(num_smpl)
-        ostream = np.zeros(istream.shape)
-        estream = np.zeros(istream.shape)
 
         order = 4
         lpc = Levinson(order)
@@ -121,6 +127,9 @@ if __name__ == '__main__':
         hop_size = win_size // 2
         win = signal.windows.hann(win_size+1)[:-1]
         buf = np.zeros((win_size, ))
+        buf_pred = np.zeros((order, ))
+        ostream = np.zeros(istream.shape)
+        estream = np.zeros((num_smpl+hop_size, ))
         num_frm = num_smpl // hop_size
         for n in range(num_frm):
             src = n * hop_size
@@ -129,10 +138,10 @@ if __name__ == '__main__':
             buf[hop_size:] = istream[src:dst]
 
             lpc.update(buf * win)
-            errFrm = lpc.pem(buf)
-            estream[src:dst] = errFrm[:hop_size]
-            ostream[src:dst] = istream[src:dst] - estream[src:dst]
-
+            errFrm, buf_pred = lpc.pem(buf*win, buf_pred)
+            estream[src:src+win_size] += errFrm
+        estream = estream[hop_size:]    # get rid of latency
+        ostream = istream - estream
         avg_err = (estream ** 2).mean()
         print(f'Avg Error = {avg_err}')
         print(f'Coef = {lpc.getCoef()}')

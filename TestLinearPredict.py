@@ -33,16 +33,19 @@ class SimulateParam:
 def testLpAnalyze(istream, sim_param):
     print('[Test Linear Predictor Analyze]')
     num_smpl = istream.shape[0]
-    ostream = np.zeros(istream.shape)
-    estream = np.zeros(istream.shape)
 
     lpc = sim_param.getLinearPredictor()
+    lpc_order = lpc.getCoef().shape[0]
+
     win = sim_param.getWindow()
     win_size = win.shape[0]
     hop_size = win_size // 2
     frm = np.zeros((win_size, ))
-    num_frm = num_smpl // hop_size
+    buf = np.zeros((lpc_order, ))
 
+    ostream = np.zeros((num_smpl, ))
+    estream = np.zeros((num_smpl+hop_size, ))
+    num_frm = num_smpl // hop_size
     for n in range(num_frm):
         src = n * hop_size
         dst = (n+1)*hop_size
@@ -50,9 +53,10 @@ def testLpAnalyze(istream, sim_param):
         frm[hop_size:] = istream[src:dst]
 
         lpc.update(frm * win)
-        errFrm = lpc.pem(frm)
-        estream[src:dst] = errFrm[:hop_size]
-        ostream[src:dst] = istream[src:dst] - estream[src:dst]
+        errFrm, buf = lpc.pem(frm*win, buf)
+        estream[src:src+win_size] += errFrm
+    estream = estream[hop_size:]    # get rid of latency
+    ostream = istream - estream
 
     plt.figure()
     plt.plot(istream, label='Truth')
@@ -114,6 +118,7 @@ def main(args):
 
     lpc_order = 10
     win_size  = 32
+    assert(win_size > lpc_order), f'[ERROR] Window size ({win_size}) must be greater than Lp order ({lpc_order})!'
     ostream, estream = testLpAnalyze(
                         istream, 
                         SimulateParam(
