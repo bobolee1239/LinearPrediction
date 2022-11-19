@@ -16,13 +16,16 @@ class LinearPredictor:
     def _batchUpdateCov(self, x):
         N = x.shape[0]
         for p in range(self._cov.shape[0]):
+            den = 0
             for j in range(N-p):
+                den += 1
                 self._cov[p] += x[j]*x[j+p]
+            self._cov[p] /= den
 
     def _updateCov(self, x):
         self._buf    = np.roll(self._buf, 1)
         self._buf[0] = x
-        alpha = 0.99
+        alpha = 0.9999
         for p in range(self._cov.shape[0]):
             rss = self._buf[0]*self._buf[0+p]
             self._cov[p] = self._cov[p]*alpha + (1.0-alpha)*rss
@@ -96,12 +99,15 @@ if __name__ == '__main__':
         
         avg_err = (estream ** 2).mean()
         print(f'Avg Error = {avg_err}')
+        print(f'Coef = {lpc._coef}')
 
         plt.figure()
         plt.plot(istream, label='Truth')
         plt.plot(ostream, label='Predict')
+        plt.plot(estream, label='Error')
         plt.xlabel('Time (smpl)')
         plt.ylabel('Amplitude (smpl)')
+        plt.title('Test Batch Update')
         plt.legend()
 
     def testStreamUpdate():
@@ -128,14 +134,17 @@ if __name__ == '__main__':
         
         avg_err = (estream ** 2).mean()
         print(f'Avg Error = {avg_err}')
-        pdb.set_trace()
+        print(f'Coef = {lpc._coef}')
 
         plt.figure()
         plt.plot(istream, label='Truth')
         plt.plot(ostream, label='Predict')
+        plt.plot(estream, label='Error')
         plt.xlabel('Time (smpl)')
         plt.ylabel('Amplitude (smpl)')
+        plt.title('Test Stream Update')
         plt.legend()
 
+    testBatchUpdate()
     testStreamUpdate()
     plt.show()
