@@ -4,31 +4,17 @@ class LinearPredictor:
     def __init__(self, order):
         self._order = order
         self._coef  = np.zeros((order, ))
-        shape = (order+1, )
-        self._buf  = np.zeros(shape)
-        self._cov  = np.zeros(shape)
+        self._cov   = np.zeros((order+1, ))
+        self.reset()
 
     def reset(self):
-        self._coef[:] = 0.0
-        self._buf[:] = 0.0
         self._cov[:] = 0.0
-
-    def _batchUpdateCov(self, x):
-        N = x.shape[0]
-        for p in range(self._cov.shape[0]):
-            den = 0
-            for j in range(N-p):
-                den += 1
-                self._cov[p] += x[j]*x[j+p]
-            self._cov[p] /= den
+        self._coef[:] = 0.0
 
     def _updateCov(self, x):
-        self._buf    = np.roll(self._buf, 1)
-        self._buf[0] = x
-        alpha = 0.9999
-        for p in range(self._cov.shape[0]):
-            rss = self._buf[0]*self._buf[0+p]
-            self._cov[p] = self._cov[p]*alpha + (1.0-alpha)*rss
+        self._cov[0] = (x * x).sum()
+        for p in range(1, self._cov.shape[0]):
+            self._cov[p] = (x[p:] * x[:-p]).sum()
 
     def _updateCoef(self):
         Ak  = np.zeros((self._order+1, ))
@@ -49,25 +35,41 @@ class LinearPredictor:
         self._coef[:] = Ak[1:]
         return err
 
-    def update(self, smpl):
-        self._updateCov(smpl)
+    def update(self, istream):
+        self._updateCov(istream)
         return self._updateCoef()
 
-    def process(self, stream):
+    def pem(self, istream):
         '''
         Arg:
             - stream <np.ndarray> in reverse order, e.g. [xp, xp-1, ... x2, x1]
         Return:
-            - predict : <float>
+            - error : <np.ndarray>
         '''
-        predict = 0.0
-        predict = -(self._coef * stream).sum()
-        return predict
+        N = istream.shape[0]
+        buf = np.zeros((self._order, ))
+        estream = np.zeros(istream.shape)
+        for n in range(self._order):
+            buf = np.roll(buf, 1)
+            buf[0] = istream[n]
+        for n in range(self._order, N):
+            pred = self.predict(buf)
+            estream[n] = (istream[n] - pred)
+            buf = np.roll(buf, 1)
+            buf[0] = istream[n]
+        return estream
+
+    def predict(self, frm):
+        return -(self._coef * frm).sum()
+    
+    def getCoef(self):
+        return np.copy(self._coef)
 
 
 if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
+    from scipy import signal
 
     def genTestSignal(num_smpl):
         i = np.array(list(range(0, num_smpl)))
@@ -84,22 +86,21 @@ if __name__ == '__main__':
 
         order = 4
         lpc = LinearPredictor(order)
-        lpc._batchUpdateCov(istream)
-        lpc._updateCoef()
+        lpc.update(istream)
 
         buf = np.zeros((order, ))
         for n in range(order):
             buf = np.roll(buf, 1)
             buf[0] = istream[n]
         for n in range(order, num_smpl):
-            ostream[n] = lpc.process(buf)
+            ostream[n] = lpc.predict(buf)
             estream[n] = ostream[n] - istream[n]
             buf = np.roll(buf, 1)
             buf[0] = istream[n]
         
         avg_err = (estream ** 2).mean()
         print(f'Avg Error = {avg_err}')
-        print(f'Coef = {lpc._coef}')
+        print(f'Coef = {lpc.getCoef()}')
 
         plt.figure()
         plt.plot(istream, label='Truth')
@@ -120,21 +121,25 @@ if __name__ == '__main__':
         order = 4
         lpc = LinearPredictor(order)
 
-        buf = np.zeros((order, ))
-        for n in range(order):
-            lpc.update(istream[n])
-            buf = np.roll(buf, 1)
-            buf[0] = istream[n]
-        for n in range(order, num_smpl):
-            lpc.update(istream[n])
-            ostream[n] = lpc.process(buf)
-            estream[n] = ostream[n] - istream[n]
-            buf = np.roll(buf, 1)
-            buf[0] = istream[n]
-        
+        win_size = 64
+        hop_size = win_size // 2
+        win = signal.windows.hann(win_size+1)[:-1]
+        buf = np.zeros((win_size, ))
+        num_frm = num_smpl // hop_size
+        for n in range(num_frm):
+            src = n * hop_size
+            dst = (n+1)*hop_size
+            buf[:hop_size] = buf[hop_size:]
+            buf[hop_size:] = istream[src:dst]
+
+            lpc.update(buf * win)
+            errFrm = lpc.pem(buf)
+            estream[src:dst] = errFrm[:hop_size]
+            ostream[src:dst] = istream[src:dst] - estream[src:dst]
+
         avg_err = (estream ** 2).mean()
         print(f'Avg Error = {avg_err}')
-        print(f'Coef = {lpc._coef}')
+        print(f'Coef = {lpc.getCoef()}')
 
         plt.figure()
         plt.plot(istream, label='Truth')
@@ -145,6 +150,6 @@ if __name__ == '__main__':
         plt.title('Test Stream Update')
         plt.legend()
 
-    testBatchUpdate()
+    # testBatchUpdate()
     testStreamUpdate()
     plt.show()
