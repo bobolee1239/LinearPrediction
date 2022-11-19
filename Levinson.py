@@ -3,6 +3,7 @@ from LinearPredictorInterface import ILinearPredictor
 
 class Levinson(ILinearPredictor):
     def __init__(self, order):
+        super().__init__()
         self._order = order
         self._coef  = np.zeros((order, ))
         self._cov   = np.zeros((order+1, ))
