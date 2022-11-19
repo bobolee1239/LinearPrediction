@@ -116,7 +116,7 @@ def main(args):
     if len(istream.shape) > 1:
         istream = istream[:, 0]
 
-    lpc_order = 10
+    lpc_order = 20
     win_size  = 32
     assert(win_size > lpc_order), f'[ERROR] Window size ({win_size}) must be greater than Lp order ({lpc_order})!'
     ostream, estream = testLpAnalyze(
