@@ -3,15 +3,93 @@ import numpy as np
 import soundfile as sf
 import sounddevice as sd
 import matplotlib.pyplot as plt
+
+from scipy import signal
 from LinearPredictor import LinearPredictor
 
 def genExcitation(size, period):
     excitation = np.zeros((size, ))
     cnt = 0
     while cnt < size:
-        excitation[cnt] = 0.1
+        excitation[cnt] = 0.01
         cnt += period
     return excitation
+
+def genHannWin(size):
+    return signal.windows.hann(size+1)[:-1]
+
+def testLpAnalyze(istream, lpc_order):
+    print('[Test Linear Predictor Analyze]')
+    num_smpl = istream.shape[0]
+    ostream = np.zeros(istream.shape)
+    estream = np.zeros(istream.shape)
+    lpc = LinearPredictor(lpc_order)
+
+    win_size = 64
+    hop_size = win_size // 2
+    win = genHannWin(win_size)
+    frm = np.zeros((win_size, ))
+    num_frm = num_smpl // hop_size
+
+    for n in range(num_frm):
+        src = n * hop_size
+        dst = (n+1)*hop_size
+        frm[:hop_size] = frm[hop_size:]
+        frm[hop_size:] = istream[src:dst]
+
+        lpc.update(frm * win)
+        errFrm = lpc.pem(frm)
+        estream[src:dst] = errFrm[:hop_size]
+        ostream[src:dst] = istream[src:dst] - estream[src:dst]
+
+    plt.figure()
+    plt.plot(istream, label='Truth')
+    plt.plot(ostream, label='Predict')
+    plt.plot(estream, label='Error')
+    plt.xlabel('Time (smpl)')
+    plt.ylabel('Amplitude (smpl)')
+    plt.ylim([-0.9, 0.9])
+    plt.title('Test Linear Predictor Analyze')
+    plt.legend()
+
+    return ostream, estream 
+
+
+def testLpSynthesize(istream, lpc_order, excitation):
+    print('[Test Linear Predictor Synthesize]')
+    num_smpl = istream.shape[0]
+    ostream = np.zeros(istream.shape)
+
+    lpc = LinearPredictor(lpc_order)
+    buf = np.zeros((lpc_order, ))
+
+    win_size = 64
+    hop_size = win_size // 2
+    win = genHannWin(win_size)
+    frm = np.zeros((win_size, ))
+    num_frm = num_smpl // hop_size
+
+    buf = np.zeros((lpc_order, ))
+    for n in range(num_frm):
+        src = n * hop_size
+        dst = (n+1)*hop_size
+        frm[:hop_size] = frm[hop_size:]
+        frm[hop_size:] = istream[src:dst]
+
+        lpc.update(frm * win)
+        for n in range(src, dst):
+            ostream[n] = lpc.predict(buf) + excitation[n]
+            buf = np.roll(buf, 1)
+            buf[0] = ostream[n]
+    plt.figure()
+    plt.plot(istream, label='Truth')
+    plt.plot(ostream, label='Synth')
+    plt.xlabel('Time (smpl)')
+    plt.ylabel('Amplitude (smpl)')
+    plt.ylim([-0.9, 0.9])
+    plt.title('Test Linear Predictor Synthesize')
+    plt.legend()
+    return ostream
 
 def main(args):
     iFile = args.input 
@@ -21,53 +99,16 @@ def main(args):
     if len(istream.shape) > 1:
         istream = istream[:, 0]
 
-    order = 10
-    lpc = LinearPredictor(order)
-    # lpc._batchUpdateCov(istream)
-    # lpc._updateCoef()
-    num_smpl = istream.shape[0]
-
-    period = 5
-    ostream = np.zeros(istream.shape)
-    # ostream = genExcitation(num_smpl, period)
-    estream = np.zeros(istream.shape)
-    buf     = np.zeros((order, ))
-    for n in range(order):
-        err = lpc.update(istream[n])
-        buf = np.roll(buf, 1)
-        buf[0] = istream[n]
-    for n in range(order, num_smpl):
-        if n % 480 == 0:
-            print(f'smpl[{n}]')
-        err = lpc.update(istream[n])
-        ostream[n] = lpc.process(buf)
-        estream[n] = (istream[n] - ostream[n])
-        # print(ostream[n], istream[n])
-        buf = np.roll(buf, 1)
-        buf[0] = istream[n]
-    # buf     = np.zeros((order, ))
-    # estream = np.random.normal(0.0, 0.01, num_smpl)
-    # for n in range(order, num_smpl):
-    #     ostream[n] = lpc.process(buf) + estream[n]
-    #     # print(ostream[n], istream[n])
-    #     buf = np.roll(buf, 1)
-    #     buf[0] = ostream[n]
-        
-    sf.write(oFile, ostream, sr)
+    lpc_order = 20
+    ostream, estream = testLpAnalyze(istream, lpc_order)
     avg_err = (estream**2).mean()
-    print(f'Predict Err={avg_err}')
+    print(f'[Test Lp Analzye] Predict Err={avg_err}')
 
-    pdb.set_trace()
-
-    plt.figure()
-    plt.plot(istream, label='Truth')
-    plt.plot(ostream, label='Predict')
-    plt.plot(estream, label='Error')
-    plt.xlabel('Time (smpl)')
-    plt.ylabel('Amplitude (smpl)')
-    plt.ylim([-0.9, 0.9])
-    plt.legend()
+    excitation = genExcitation(istream.shape[0], period=64)
+    ostream = testLpSynthesize(istream, lpc_order, excitation)
+    sf.write(oFile, ostream, sr)
     plt.show()
+    pdb.set_trace()
 
 if __name__ == '__main__':
     import pdb
