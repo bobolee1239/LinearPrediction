@@ -18,15 +18,28 @@ def genExcitation(size, period):
 def genHannWin(size):
     return signal.windows.hann(size+1)[:-1]
 
-def testLpAnalyze(istream, lpc):
+class SimulateParam:
+    def __init__(self, lpc, win_size):
+        self._lpc = lpc
+        self._win = genHannWin(win_size)
+    
+    def getWindow(self):
+        return self._win
+
+    def getLinearPredictor(self):
+        return self._lpc
+
+
+def testLpAnalyze(istream, sim_param):
     print('[Test Linear Predictor Analyze]')
     num_smpl = istream.shape[0]
     ostream = np.zeros(istream.shape)
     estream = np.zeros(istream.shape)
 
-    win_size = 64
+    lpc = sim_param.getLinearPredictor()
+    win = sim_param.getWindow()
+    win_size = win.shape[0]
     hop_size = win_size // 2
-    win = genHannWin(win_size)
     frm = np.zeros((win_size, ))
     num_frm = num_smpl // hop_size
 
@@ -54,21 +67,21 @@ def testLpAnalyze(istream, lpc):
     return ostream, estream 
 
 
-def testLpSynthesize(istream, lpc, excitation):
+def testLpSynthesize(istream, excitation, sim_param):
     print('[Test Linear Predictor Synthesize]')
     num_smpl = istream.shape[0]
     ostream = np.zeros(istream.shape)
 
+    lpc = sim_param.getLinearPredictor()
     lpc_order = lpc.getCoef().shape[0]
-    buf = np.zeros((lpc_order, ))
 
-    win_size = 64
+    win = sim_param.getWindow()
+    win_size = win.shape[0]
     hop_size = win_size // 2
-    win = genHannWin(win_size)
     frm = np.zeros((win_size, ))
-    num_frm = num_smpl // hop_size
 
     buf = np.zeros((lpc_order, ))
+    num_frm = num_smpl // hop_size
     for n in range(num_frm):
         src = n * hop_size
         dst = (n+1)*hop_size
@@ -99,15 +112,27 @@ def main(args):
     if len(istream.shape) > 1:
         istream = istream[:, 0]
 
-    lpc_order = 20
-    ostream, estream = testLpAnalyze(istream, Levinson(lpc_order))
+    lpc_order = 10
+    win_size  = 32
+    ostream, estream = testLpAnalyze(
+                        istream, 
+                        SimulateParam(
+                            Levinson(lpc_order),
+                            win_size
+                        ))
     avg_err = (estream**2).mean()
     print(f'- Analyze Error = {avg_err}')
     sf.write(f'{oFname}_anlyz_voc.wav', ostream, sr)
     sf.write(f'{oFname}_anlyz_err.wav', estream, sr)
 
     excitation = genExcitation(istream.shape[0], period=64)
-    ostream = testLpSynthesize(istream, Levinson(lpc_order), excitation)
+    ostream = testLpSynthesize(
+                istream, 
+                excitation,
+                SimulateParam(
+                    Levinson(lpc_order),
+                    win_size
+                ))
     sf.write(f'{oFname}_synth.wav', ostream, sr)
     plt.show()
     pdb.set_trace()
