@@ -135,7 +135,7 @@ def main(args):
                 ))
     sf.write(f'{oFname}_synth.wav', ostream, sr)
     plt.show()
-    pdb.set_trace()
+
 
 if __name__ == '__main__':
     import pdb
