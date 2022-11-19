@@ -1,11 +1,11 @@
-
+import os
 import numpy as np 
 import soundfile as sf
 import sounddevice as sd
 import matplotlib.pyplot as plt
 
 from scipy import signal
-from LinearPredictor import LinearPredictor
+from Levinson import Levinson
 
 def genExcitation(size, period):
     excitation = np.zeros((size, ))
@@ -18,12 +18,11 @@ def genExcitation(size, period):
 def genHannWin(size):
     return signal.windows.hann(size+1)[:-1]
 
-def testLpAnalyze(istream, lpc_order):
+def testLpAnalyze(istream, lpc):
     print('[Test Linear Predictor Analyze]')
     num_smpl = istream.shape[0]
     ostream = np.zeros(istream.shape)
     estream = np.zeros(istream.shape)
-    lpc = LinearPredictor(lpc_order)
 
     win_size = 64
     hop_size = win_size // 2
@@ -55,12 +54,12 @@ def testLpAnalyze(istream, lpc_order):
     return ostream, estream 
 
 
-def testLpSynthesize(istream, lpc_order, excitation):
+def testLpSynthesize(istream, lpc, excitation):
     print('[Test Linear Predictor Synthesize]')
     num_smpl = istream.shape[0]
     ostream = np.zeros(istream.shape)
 
-    lpc = LinearPredictor(lpc_order)
+    lpc_order = lpc.getCoef().shape[0]
     buf = np.zeros((lpc_order, ))
 
     win_size = 64
@@ -78,7 +77,7 @@ def testLpSynthesize(istream, lpc_order, excitation):
 
         lpc.update(frm * win)
         for n in range(src, dst):
-            ostream[n] = lpc.predict(buf) + excitation[n]
+            ostream[n] = lpc.predictNext(buf) + excitation[n]
             buf = np.roll(buf, 1)
             buf[0] = ostream[n]
     plt.figure()
@@ -94,19 +93,22 @@ def testLpSynthesize(istream, lpc_order, excitation):
 def main(args):
     iFile = args.input 
     oFile = args.output
+    oFname, _ = os.path.splitext(oFile)
 
     istream, sr = sf.read(iFile)
     if len(istream.shape) > 1:
         istream = istream[:, 0]
 
     lpc_order = 20
-    ostream, estream = testLpAnalyze(istream, lpc_order)
+    ostream, estream = testLpAnalyze(istream, Levinson(lpc_order))
     avg_err = (estream**2).mean()
-    print(f'[Test Lp Analzye] Predict Err={avg_err}')
+    print(f'- Analyze Error = {avg_err}')
+    sf.write(f'{oFname}_anlyz_voc.wav', ostream, sr)
+    sf.write(f'{oFname}_anlyz_err.wav', estream, sr)
 
     excitation = genExcitation(istream.shape[0], period=64)
-    ostream = testLpSynthesize(istream, lpc_order, excitation)
-    sf.write(oFile, ostream, sr)
+    ostream = testLpSynthesize(istream, Levinson(lpc_order), excitation)
+    sf.write(f'{oFname}_synth.wav', ostream, sr)
     plt.show()
     pdb.set_trace()
 

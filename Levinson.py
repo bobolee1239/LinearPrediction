@@ -1,15 +1,11 @@
 import numpy as np 
+from LinearPredictorInterface import ILinearPredictor
 
-class LinearPredictor:
+class Levinson(ILinearPredictor):
     def __init__(self, order):
         self._order = order
         self._coef  = np.zeros((order, ))
         self._cov   = np.zeros((order+1, ))
-        self.reset()
-
-    def reset(self):
-        self._cov[:] = 0.0
-        self._coef[:] = 0.0
 
     def _updateCov(self, x):
         self._cov[0] = (x * x).sum()
@@ -53,13 +49,13 @@ class LinearPredictor:
             buf = np.roll(buf, 1)
             buf[0] = istream[n]
         for n in range(self._order, N):
-            pred = self.predict(buf)
+            pred = self.predictNext(buf)
             estream[n] = (istream[n] - pred)
             buf = np.roll(buf, 1)
             buf[0] = istream[n]
         return estream
 
-    def predict(self, frm):
+    def predictNext(self, frm):
         return -(self._coef * frm).sum()
     
     def getCoef(self):
@@ -85,7 +81,7 @@ if __name__ == '__main__':
         estream = np.zeros(istream.shape)
 
         order = 4
-        lpc = LinearPredictor(order)
+        lpc = Levinson(order)
         lpc.update(istream)
 
         buf = np.zeros((order, ))
@@ -93,7 +89,7 @@ if __name__ == '__main__':
             buf = np.roll(buf, 1)
             buf[0] = istream[n]
         for n in range(order, num_smpl):
-            ostream[n] = lpc.predict(buf)
+            ostream[n] = lpc.predictNext(buf)
             estream[n] = ostream[n] - istream[n]
             buf = np.roll(buf, 1)
             buf[0] = istream[n]
@@ -119,7 +115,7 @@ if __name__ == '__main__':
         estream = np.zeros(istream.shape)
 
         order = 4
-        lpc = LinearPredictor(order)
+        lpc = Levinson(order)
 
         win_size = 64
         hop_size = win_size // 2
@@ -150,6 +146,6 @@ if __name__ == '__main__':
         plt.title('Test Stream Update')
         plt.legend()
 
-    # testBatchUpdate()
+    testBatchUpdate()
     testStreamUpdate()
     plt.show()
