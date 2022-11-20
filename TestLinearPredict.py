@@ -5,7 +5,7 @@ import sounddevice as sd
 import matplotlib.pyplot as plt
 
 from scipy import signal
-from Levinson import Levinson
+from LinearPredictor.Levinson import Levinson
 
 def genExcitation(size, period):
     excitation = np.zeros((size, ))

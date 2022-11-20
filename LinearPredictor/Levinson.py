@@ -1,5 +1,5 @@
 import numpy as np 
-from LinearPredictorInterface import ILinearPredictor
+from LinearPredictor.LinearPredictorInterface import ILinearPredictor
 
 class Levinson(ILinearPredictor):
     def __init__(self, order):
